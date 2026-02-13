@@ -43,7 +43,6 @@ class IntelligentAgent:
         self.load_or_setup()
 
     def load_or_setup(self):
-        """Initializes configuration or triggers setup."""
         os.makedirs(CONFIG_DIR, exist_ok=True)
         if not os.path.exists(CONFIG_FILE):
             self.run_setup()
@@ -53,7 +52,6 @@ class IntelligentAgent:
                 self.authenticate(config)
 
     def run_setup(self):
-        """Interactive first-time setup."""
         os.system('clear')
         print(f"{Colors.BOLD}{Colors.CYAN}=== 🔐 INITIAL NEURAL SETUP ==={Colors.RESET}")
         while True:
@@ -70,7 +68,6 @@ class IntelligentAgent:
         self.google_key, self.groq_key = g_key, q_key
 
     def authenticate(self, config):
-        """Secure login."""
         os.system('clear')
         print(f"{Colors.BOLD}{Colors.CYAN}=== 🧠 NEURAL LINK LOCKED ==={Colors.RESET}")
         for attempt in range(3):
@@ -82,33 +79,49 @@ class IntelligentAgent:
         sys.exit(1)
 
     def save_state(self):
-        """Saves current keys and history to persistent storage."""
         with open(CONFIG_FILE, 'r') as f:
             data = json.load(f)
         data.update({"g_key": self.google_key, "q_key": self.groq_key, "history": self.history})
-        with open(CONFIG_FILE, 'w') as f:
-            json.dump(data, f)
+        with open(CONFIG_FILE, 'w') as f: json.dump(data, f)
 
     # ==============================================================================
-    # 3. SELF-HEALING EXECUTION
+    # 3. SELF-HEALING & MODEL STATUS (FIXED //mds)
     # ==============================================================================
+
+    def check_model_status(self, startup=False):
+        """Feature: //mds - FIXED to actually ping registries."""
+        if not startup: print(f"\n{Colors.YELLOW}--- 🛠️ MODEL AVAILABILITY STATUS ---{Colors.RESET}")
+        print(f"{Colors.GRAY}Pinging registries...{Colors.RESET}")
+        
+        try:
+            groq_resp = requests.get("https://api.groq.com/openai/v1/models", headers={"Authorization": f"Bearer {self.groq_key}"}, timeout=5)
+            groq_models = [m['id'] for m in groq_resp.json().get('data', [])]
+        except: groq_models = []
+        
+        try:
+            google_resp = requests.get(f"https://generativelanguage.googleapis.com/v1beta/models?key={self.google_key}", timeout=5)
+            google_models = [m['name'].split('/')[-1] for m in google_resp.json().get('models', [])]
+        except: google_models = []
+
+        for m in MODEL_POOL:
+            available = (m['model'] in groq_models if m['provider'] == 'groq' else m['model'] in google_models)
+            if not startup or not available:
+                status = f"{Colors.GREEN}Ready{Colors.RESET}" if available else f"{Colors.RED}Offline{Colors.RESET}"
+                print(f"[{m['provider'].upper()}] {m['name']:<18} : {status}")
 
     def call_api(self, provider, model_id, prompt):
-        try:
-            if provider == "google":
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={self.google_key}"
-                resp = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=20)
-                return resp.json()['candidates'][0]['content']['parts'][0]['text']
-            else:
-                url = "https://api.groq.com/openai/v1/chat/completions"
-                headers = {"Authorization": f"Bearer {self.groq_key}"}
-                data = {"model": model_id, "messages": [{"role": "user", "content": prompt}]}
-                resp = requests.post(url, headers=headers, json=data, timeout=20)
-                return resp.json()['choices'][0]['message']['content']
-        except Exception as e: raise Exception(str(e))
+        if provider == "google":
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={self.google_key}"
+            resp = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=20)
+            return resp.json()['candidates'][0]['content']['parts'][0]['text']
+        else:
+            url = "https://api.groq.com/openai/v1/chat/completions"
+            headers = {"Authorization": f"Bearer {self.groq_key}"}
+            data = {"model": model_id, "messages": [{"role": "user", "content": prompt}]}
+            resp = requests.post(url, headers=headers, json=data, timeout=20)
+            return resp.json()['choices'][0]['message']['content']
 
     def semantic_router(self, user_prompt):
-        """Brain Failsafe: Reroutes if primary router fails."""
         instruction = f"ID for: '{user_prompt}'. Models: {[{m['model']: m['desc']} for m in MODEL_POOL]}. Return ONLY ID."
         for router in ROUTER_POOL:
             try:
@@ -119,7 +132,6 @@ class IntelligentAgent:
         return MODEL_POOL[0]
 
     def execute_safely(self, prompt):
-        """Failsafe Execution with History Logging."""
         target = self.manual_model if not self.auto_mode else self.semantic_router(prompt)
         print(f"{Colors.GRAY}🧠 Node: {target['name']}{Colors.RESET}")
         try:
@@ -134,31 +146,28 @@ class IntelligentAgent:
         return target, response
 
     # ==============================================================================
-    # 4. MODULAR MANAGEMENT CONSOLE
+    # 4. MANAGEMENT & HISTORY
     # ==============================================================================
 
     def view_history(self):
-        """Feature: History Viewer."""
         os.system('clear')
         print(f"{Colors.BOLD}{Colors.CYAN}=== 📜 SESSION HISTORY ==={Colors.RESET}")
         if not self.history: print("No records found.")
-        for entry in self.history[-10:]: # Shows last 10 entries
+        for entry in self.history[-10:]:
             print(f"\n{Colors.YELLOW}[{entry['time']}] - {entry['model']}{Colors.RESET}")
             print(f"{Colors.GREEN}You:{Colors.RESET} {entry['user']}")
-            print(f"{Colors.CYAN}AI:{Colors.RESET} {entry['ai'][:200]}...") # Truncated for readability
+            print(f"{Colors.CYAN}AI:{Colors.RESET} {entry['ai'][:200]}...")
         input(f"\n{Colors.GRAY}Press Enter to return...{Colors.RESET}")
 
     def update_keys(self):
-        """Feature: Modular Key Update (Invisible)."""
         print(f"\n[1] Update Google Key [2] Update Groq Key [0] Cancel")
         c = input("Choice: ")
         if c == "1": self.google_key = getpass.getpass("Enter New Google Key: ")
         elif c == "2": self.groq_key = getpass.getpass("Enter New Groq Key: ")
         self.save_state()
-        print(f"{Colors.GREEN}Keys updated successfully.{Colors.RESET}")
+        print(f"{Colors.GREEN}Keys updated.{Colors.RESET}")
 
     def show_menu(self):
-        """Integrated Management Console."""
         print(f"\n{Colors.BOLD}{Colors.YELLOW}--- SYSTEM MANAGEMENT ---{Colors.RESET}")
         print("[1] Switch Model [2] Auto-Mode [3] 📜 View History [4] 🔑 Update Keys [5] Reset Passcode [0] Back")
         cmd = input("Select: ")
@@ -172,6 +181,7 @@ class IntelligentAgent:
         elif cmd == "5": self.run_setup()
 
     def run(self):
+        self.check_model_status(startup=True)
         while True:
             try:
                 print(f"\n{Colors.GRAY}" + "═" * 60 + f"{Colors.RESET}")
@@ -182,9 +192,7 @@ class IntelligentAgent:
                 user_in = input(f"{Colors.BOLD}{Colors.GREEN}You:{Colors.RESET} ").strip()
                 if not user_in: continue
                 if user_in.lower() == 'menu': self.show_menu()
-                elif user_in.lower() == '//mds':
-                    # Status check logic removed from main for space, but //mds remains as command
-                    print("Pinging registries...")
+                elif user_in.lower() == '//mds': self.check_model_status()
                 elif user_in.lower() in ['exit', 'quit']: break
                 else:
                     used_model, response = self.execute_safely(user_in)
