@@ -1,0 +1,21 @@
+services:
+  ai-agent:
+    build: .
+    container_name: my_ai_agent
+    image: ai-agent:latest
+    # Secure Bridge Network
+    networks:
+      - ai_secure_net
+    # Google DNS to prevent connection errors
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    # Persistent storage for your keys and history
+    volumes:
+      - ./agent_data:/root
+    stdin_open: true
+    tty: true
+
+networks:
+  ai_secure_net:
+    driver: bridge
